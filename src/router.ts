@@ -150,22 +150,30 @@ const fichajesRouter = router({
       direccion: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
-      const existing = await sql(
-        "SELECT id FROM fichajes WHERE empleado_id = ? AND fecha = ? AND tipo = ?",
-        [input.empleadoId, input.fecha, input.tipo]
+      // Obtener todos los fichajes del día para este empleado
+      const todayFichajes = await sql(
+        "SELECT id, tipo, hora FROM fichajes WHERE empleado_id = ? AND fecha = ? ORDER BY hora ASC",
+        [input.empleadoId, input.fecha]
       );
-      if (existing.length > 0) {
-        return { success: false, error: `Ya has fichado ${input.tipo} hoy` };
+      const entradas = todayFichajes.filter((f: any) => f.tipo === 'entrada');
+      const salidas = todayFichajes.filter((f: any) => f.tipo === 'salida');
+
+      // Permitir máximo 2 entradas y 2 salidas por día (turno partido)
+      if (input.tipo === 'entrada' && entradas.length >= 2) {
+        return { success: false, error: 'Ya has fichado 2 entradas hoy (máximo para turno partido)' };
       }
-      if (input.tipo === "salida") {
-        const entrada = await sql(
-          "SELECT id FROM fichajes WHERE empleado_id = ? AND fecha = ? AND tipo = 'entrada'",
-          [input.empleadoId, input.fecha]
-        );
-        if (entrada.length === 0) {
-          return { success: false, error: "Debes fichar entrada antes de fichar salida" };
-        }
+      if (input.tipo === 'salida' && salidas.length >= 2) {
+        return { success: false, error: 'Ya has fichado 2 salidas hoy (máximo para turno partido)' };
       }
+
+      // Verificar secuencia lógica: entrada-salida-entrada-salida
+      if (input.tipo === 'salida' && entradas.length <= salidas.length) {
+        return { success: false, error: 'Debes fichar entrada antes de fichar salida' };
+      }
+      if (input.tipo === 'entrada' && entradas.length > salidas.length) {
+        return { success: false, error: 'Debes fichar salida antes de una nueva entrada' };
+      }
+
       await sql(
         "INSERT INTO fichajes (id, empleado_id, empleado_nombre, fecha, tipo, hora, latitud, longitud, direccion) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [input.id, input.empleadoId, input.empleadoNombre, input.fecha, input.tipo, input.hora, input.latitud || null, input.longitud || null, input.direccion || null]
