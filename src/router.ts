@@ -696,6 +696,35 @@ const recordatoriosRouter = router({
     }),
 });
 
+// ============ ARCHIVOS COMPARTIDOS ============
+const archivosRouter = router({
+  list: publicProcedure.query(async () => {
+    return await sql("SELECT * FROM archivos_compartidos ORDER BY created_at DESC");
+  }),
+  upload: publicProcedure
+    .input(z.object({
+      nombre: z.string(),
+      descripcion: z.string().optional(),
+      url: z.string(),
+      tipo: z.string(),
+      tamano: z.string().optional(),
+      subidoPor: z.string(),
+    }))
+    .mutation(async ({ input }) => {
+      await sql(
+        "INSERT INTO archivos_compartidos (nombre, descripcion, url, tipo, tamano, subido_por) VALUES (?, ?, ?, ?, ?, ?)",
+        [input.nombre, input.descripcion || '', input.url, input.tipo, input.tamano || '', input.subidoPor]
+      );
+      return { success: true };
+    }),
+  delete: publicProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await sql("DELETE FROM archivos_compartidos WHERE id = ?", [input.id]);
+      return { success: true };
+    }),
+});
+
 // ============ APP ROUTER ============
 export const appRouter = router({
   app: router({
@@ -711,6 +740,7 @@ export const appRouter = router({
     documentos: documentosRouter,
     avisosLectura: avisosLecturaRouter,
     recordatorios: recordatoriosRouter,
+    archivos: archivosRouter,
   }),
 });
 
