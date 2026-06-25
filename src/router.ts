@@ -538,6 +538,164 @@ const recetasRouter = router({
     }),
 });
 
+// ============ TURNO OVERRIDES (modificación de turnos por día) ============
+const turnoOverridesRouter = router({
+  list: publicProcedure
+    .input(z.object({ fecha: z.string().optional(), empleadoId: z.string().optional() }).optional())
+    .query(async ({ input }) => {
+      let q = "SELECT * FROM turno_overrides";
+      const conditions: string[] = [];
+      const params: any[] = [];
+      if (input?.fecha) { conditions.push("fecha = ?"); params.push(input.fecha); }
+      if (input?.empleadoId) { conditions.push("empleado_id = ?"); params.push(input.empleadoId); }
+      if (conditions.length > 0) q += " WHERE " + conditions.join(" AND ");
+      q += " ORDER BY fecha DESC";
+      return await sql(q, params);
+    }),
+
+  getByMonth: publicProcedure
+    .input(z.object({ year: z.number(), month: z.number() }))
+    .query(async ({ input }) => {
+      const startDate = `${input.year}-${String(input.month).padStart(2, '0')}-01`;
+      const endDate = `${input.year}-${String(input.month).padStart(2, '0')}-31`;
+      return await sql(
+        "SELECT * FROM turno_overrides WHERE fecha BETWEEN ? AND ?",
+        [startDate, endDate]
+      );
+    }),
+
+  set: publicProcedure
+    .input(z.object({
+      empleadoId: z.string(),
+      fecha: z.string(),
+      turno: z.string(),
+      trabaja: z.boolean(),
+      notas: z.string().nullable().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      await sql(
+        `INSERT INTO turno_overrides (empleado_id, fecha, turno, trabaja, notas) 
+         VALUES (?, ?, ?, ?, ?) 
+         ON DUPLICATE KEY UPDATE turno = VALUES(turno), trabaja = VALUES(trabaja), notas = VALUES(notas)`,
+        [input.empleadoId, input.fecha, input.turno, input.trabaja, input.notas || null]
+      );
+      return { success: true };
+    }),
+
+  delete: publicProcedure
+    .input(z.object({ empleadoId: z.string(), fecha: z.string() }))
+    .mutation(async ({ input }) => {
+      await sql("DELETE FROM turno_overrides WHERE empleado_id = ? AND fecha = ?", [input.empleadoId, input.fecha]);
+      return { success: true };
+    }),
+});
+
+// ============ DOCUMENTOS ============
+const documentosRouter = router({
+  list: publicProcedure
+    .input(z.object({ empleadoId: z.string().optional(), tipo: z.string().optional() }).optional())
+    .query(async ({ input }) => {
+      let q = "SELECT * FROM documentos";
+      const conditions: string[] = [];
+      const params: any[] = [];
+      if (input?.empleadoId) { conditions.push("empleado_id = ?"); params.push(input.empleadoId); }
+      if (input?.tipo) { conditions.push("tipo = ?"); params.push(input.tipo); }
+      if (conditions.length > 0) q += " WHERE " + conditions.join(" AND ");
+      q += " ORDER BY created_at DESC";
+      return await sql(q, params);
+    }),
+
+  upload: publicProcedure
+    .input(z.object({
+      empleadoId: z.string(),
+      nombre: z.string(),
+      tipo: z.enum(["contrato", "nomina", "certificado", "otro"]),
+      url: z.string(),
+      subidoPor: z.string(),
+    }))
+    .mutation(async ({ input }) => {
+      await sql(
+        "INSERT INTO documentos (empleado_id, nombre, tipo, url, subido_por) VALUES (?, ?, ?, ?, ?)",
+        [input.empleadoId, input.nombre, input.tipo, input.url, input.subidoPor]
+      );
+      return { success: true };
+    }),
+
+  delete: publicProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await sql("DELETE FROM documentos WHERE id = ?", [input.id]);
+      return { success: true };
+    }),
+});
+
+// ============ AVISOS LECTURA ============
+const avisosLecturaRouter = router({
+  marcarLeido: publicProcedure
+    .input(z.object({ mensajeId: z.number(), empleadoId: z.string() }))
+    .mutation(async ({ input }) => {
+      await sql(
+        "INSERT IGNORE INTO avisos_lectura (mensaje_id, empleado_id) VALUES (?, ?)",
+        [input.mensajeId, input.empleadoId]
+      );
+      return { success: true };
+    }),
+
+  getLecturas: publicProcedure
+    .input(z.object({ mensajeId: z.number() }))
+    .query(async ({ input }) => {
+      return await sql(
+        "SELECT al.*, e.nombre as empleado_nombre FROM avisos_lectura al LEFT JOIN empleados e ON al.empleado_id = e.id WHERE al.mensaje_id = ?",
+        [input.mensajeId]
+      );
+    }),
+
+  getMisLecturas: publicProcedure
+    .input(z.object({ empleadoId: z.string() }))
+    .query(async ({ input }) => {
+      return await sql(
+        "SELECT mensaje_id FROM avisos_lectura WHERE empleado_id = ?",
+        [input.empleadoId]
+      );
+    }),
+});
+
+// ============ RECORDATORIOS ============
+const recordatoriosRouter = router({
+  enviarWhatsApp: publicProcedure
+    .input(z.object({
+      telefono: z.string(),
+      mensaje: z.string(),
+      empleadoNombre: z.string(),
+    }))
+    .mutation(async ({ input }) => {
+      // Generar enlace de WhatsApp (wa.me) para enviar mensaje
+      const tel = input.telefono.replace(/[^0-9]/g, '');
+      const waLink = `https://wa.me/${tel}?text=${encodeURIComponent(input.mensaje)}`;
+      return { success: true, waLink, mensaje: input.mensaje };
+    }),
+
+  enviarSMS: publicProcedure
+    .input(z.object({
+      telefono: z.string(),
+      mensaje: z.string(),
+    }))
+    .mutation(async ({ input }) => {
+      // Para SMS real necesitarías Twilio u otro servicio
+      // Por ahora generamos el enlace sms:
+      const smsLink = `sms:${input.telefono}?body=${encodeURIComponent(input.mensaje)}`;
+      return { success: true, smsLink, mensaje: input.mensaje };
+    }),
+
+  // Actualizar teléfono del empleado
+  updateTelefono: publicProcedure
+    .input(z.object({ empleadoId: z.string(), telefono: z.string() }))
+    .mutation(async ({ input }) => {
+      await sql("UPDATE empleados SET telefono = ? WHERE id = ?", [input.telefono, input.empleadoId]);
+      return { success: true };
+    }),
+});
+
 // ============ APP ROUTER ============
 export const appRouter = router({
   app: router({
@@ -549,6 +707,10 @@ export const appRouter = router({
     stats: statsRouter,
     shopping: shoppingRouter,
     recetas: recetasRouter,
+    turnos: turnoOverridesRouter,
+    documentos: documentosRouter,
+    avisosLectura: avisosLecturaRouter,
+    recordatorios: recordatoriosRouter,
   }),
 });
 
