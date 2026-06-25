@@ -189,6 +189,20 @@ const fichajesRouter = router({
         [input.empleadoId]
       );
     }),
+  delete: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      await sql("DELETE FROM fichajes WHERE id = ?", [input.id]);
+      return { success: true };
+    }),
+  deleteByIds: publicProcedure
+    .input(z.object({ ids: z.array(z.string()) }))
+    .mutation(async ({ input }) => {
+      for (const id of input.ids) {
+        await sql("DELETE FROM fichajes WHERE id = ?", [id]);
+      }
+      return { success: true, deleted: input.ids.length };
+    }),
 });
 
 // ============ MENSAJES ============
