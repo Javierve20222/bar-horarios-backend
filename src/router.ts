@@ -543,13 +543,13 @@ const turnoOverridesRouter = router({
   list: publicProcedure
     .input(z.object({ fecha: z.string().optional(), empleadoId: z.string().optional() }).optional())
     .query(async ({ input }) => {
-      let q = "SELECT * FROM turno_overrides";
+      let q = "SELECT t.*, e.nombre as empleado_nombre FROM turno_overrides t LEFT JOIN empleados e ON t.empleado_id = e.id";
       const conditions: string[] = [];
       const params: any[] = [];
-      if (input?.fecha) { conditions.push("fecha = ?"); params.push(input.fecha); }
-      if (input?.empleadoId) { conditions.push("empleado_id = ?"); params.push(input.empleadoId); }
+      if (input?.fecha) { conditions.push("t.fecha = ?"); params.push(input.fecha); }
+      if (input?.empleadoId) { conditions.push("t.empleado_id = ?"); params.push(input.empleadoId); }
       if (conditions.length > 0) q += " WHERE " + conditions.join(" AND ");
-      q += " ORDER BY fecha DESC";
+      q += " ORDER BY t.fecha DESC";
       return await sql(q, params);
     }),
 
@@ -559,7 +559,7 @@ const turnoOverridesRouter = router({
       const startDate = `${input.year}-${String(input.month).padStart(2, '0')}-01`;
       const endDate = `${input.year}-${String(input.month).padStart(2, '0')}-31`;
       return await sql(
-        "SELECT * FROM turno_overrides WHERE fecha BETWEEN ? AND ?",
+        "SELECT t.*, e.nombre as empleado_nombre FROM turno_overrides t LEFT JOIN empleados e ON t.empleado_id = e.id WHERE t.fecha BETWEEN ? AND ?",
         [startDate, endDate]
       );
     }),
