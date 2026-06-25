@@ -155,17 +155,21 @@ const fichajesRouter = router({
         "SELECT id, tipo, hora FROM fichajes WHERE empleado_id = ? AND fecha = ? ORDER BY hora ASC",
         [input.empleadoId, input.fecha]
       );
-      const entradas = todayFichajes.filter((f: any) => f.tipo === 'entrada');
+            const entradas = todayFichajes.filter((f: any) => f.tipo === 'entrada');
       const salidas = todayFichajes.filter((f: any) => f.tipo === 'salida');
 
-      // Permitir máximo 2 entradas y 2 salidas por día (turno partido)
-      if (input.tipo === 'entrada' && entradas.length >= 2) {
-        return { success: false, error: 'Ya has fichado 2 entradas hoy (máximo para turno partido)' };
-      }
-      if (input.tipo === 'salida' && salidas.length >= 2) {
-        return { success: false, error: 'Ya has fichado 2 salidas hoy (máximo para turno partido)' };
-      }
+      // Determinar si es cocinero (consultar puesto del empleado)
+      const empRows = await sql("SELECT puesto FROM empleados WHERE id = ?", [input.empleadoId]);
+      const esCocinero = empRows.length > 0 && empRows[0].puesto === 'cocina';
+      const maxFichajes = esCocinero ? 2 : 1;
 
+      // Verificar límites según puesto
+      if (input.tipo === 'entrada' && entradas.length >= maxFichajes) {
+        return { success: false, error: esCocinero ? 'Ya has fichado 2 entradas hoy (máximo turno partido)' : 'Ya has fichado entrada hoy' };
+      }
+      if (input.tipo === 'salida' && salidas.length >= maxFichajes) {
+        return { success: false, error: esCocinero ? 'Ya has fichado 2 salidas hoy (máximo turno partido)' : 'Ya has fichado salida hoy' };
+      }
       // Verificar secuencia lógica: entrada-salida-entrada-salida
       if (input.tipo === 'salida' && entradas.length <= salidas.length) {
         return { success: false, error: 'Debes fichar entrada antes de fichar salida' };
